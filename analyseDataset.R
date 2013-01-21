@@ -1,7 +1,30 @@
+library(ggplot2)
 #helper functions
+computePriors <- function(df) {
+  n = nrow(df)
+  priorNotarealquestion <- nrow(df[df$OpenStatus=="not a real question",])/n
+  priorNotconstructive <- nrow(df[df$OpenStatus=="not constructive",])/n
+  priorOfftopic <- nrow(df[df$OpenStatus=="off topic",])/n
+  priorOpen <- nrow(df[df$OpenStatus=="open",])/n
+  priorToolocalized <- nrow(df[df$OpenStatus=="too localized",])/n
+  return(c(priorNotarealquestion, priorNotconstructive, priorOfftopic, priorOpen, priorToolocalized))
+}
+
+multiclassLogLoss <- function(df) {
+  e <- 0.000000000001
+  n <- nrow(df)
+  sum <- 0
+  sum <- sum + sum(log(df[df$OpenStatus=="not a real question",]$predictedNotarealquestion+e))
+  sum <- sum + sum(log(df[df$OpenStatus=="not constructive",]$predictedNotconstructive+e))
+  sum <- sum + sum(log(df[df$OpenStatus=="off topic",]$predictedOfftopic+e))
+  sum <- sum + sum(log(df[df$OpenStatus=="open",]$predictedOpen+e))
+  sum <- sum + sum(log(df[df$OpenStatus=="too localized",]$predictedToolocalized+e))
+  return(-(1/n)*sum)
+}
+
 savePlot <- function(filename) {
-  #dev.copy(png,filename)
-  #dev.off()
+  dev.copy(png,filename)
+  dev.off()
 }
 adjustFontSize <- theme(axis.title.x = element_text(size=22),
                         axis.text.x  = element_text(size=20)) +
@@ -13,18 +36,6 @@ threshold <- function(x) {
   if(is.na(x)) {return(NA)}
   if(x>0.5) {return(1)}
   else      {return(0)}
-}
-
-multiclassLogLoss <- function(df) {
-  e <- 0.0000001
-  n <- nrow(df)
-  sum <- 0
-  sum <- sum + sum(log(df[df$OpenStatus=="not a real question",]$predictedNotarealquestion+e))
-  sum <- sum + sum(log(df[df$OpenStatus=="not constructive",]$predictedNotconstructive+e))
-  sum <- sum + sum(log(df[df$OpenStatus=="off topic",]$predictedOfftopic+e))
-  sum <- sum + sum(log(df[df$OpenStatus=="open",]$predictedOpen+e))
-  sum <- sum + sum(log(df[df$OpenStatus=="too localized",]$predictedToolocalized+e))
-  return(-(1/n)*sum)
 }
 
 predictionsToDataframe <- function(df) {
@@ -77,13 +88,13 @@ addBinaryResponse <- function(df) {
 ##########################
 #   Start
 ##########################
-library(ggplot2)
-bigTrainSample <- read.csv("smallTrainSample.csv")
-set.seed(3006)
+#first half is training data second half is test data
+bigSample <- read.csv("smallTrainSample.csv")
+set.seed(3009)
 
 #reduce data
-sampleSize <- 8000
-trainSample <- bigTrainSample[sample(nrow(bigTrainSample), sampleSize),]
+sampleSize <- nrow(bigSample)
+trainSample <- bigSample[1:floor(sampleSize/2),]
 
 #######################
 #   Preprocess Data
@@ -101,8 +112,8 @@ preprocessLabeledData <- function(df) {
   df$closed <- as.factor(df$closed)
   return(df)
 }
-
 trainSample <- preprocessLabeledData(trainSample)
+
 #######################
 #   Add features
 #######################
@@ -118,6 +129,7 @@ addFeatures <- function(df) {
     s <- gsub("\\([^\\)]*?\\)", "", s)
     return(s)
   }
+  print("  Remove boilerplate")
   df$BodyMarkClean <- sapply(df$BodyMarkdown, removeBoilerplate)
   
   #maxim of relevance
@@ -130,9 +142,11 @@ addFeatures <- function(df) {
                 sapply(df$Tag5, isEmpty)
     return(df)
   }
+  print("  Count number of tags")
   df <- countNumberTags(df)
   
   #maxim of quantity: question length
+  print("  Compute question length")
   df$nCharBody <- sapply(df$BodyMarkdown, nchar)
   df$logNCharBody <- log(df$nCharBody)
   df$nCharClean <- sapply(df$BodyMarkClean, nchar)
@@ -143,9 +157,12 @@ addFeatures <- function(df) {
   invalid <- df[df$logNCharClean==-Inf,c("logNCharClean")]
   if(length(invalid)!=0) {df[df$logNCharClean==-Inf,c("logNCharClean")] <- 0}
   #title length
+  print("  Compute title length")
   df$nCharTitle <- sapply(df$Title,nchar)
   
+  
   #maxim of manner: number of commas
+  print("  Compute number of commas")
   numberChars <- sapply(df$BodyMarkClean, nchar)
   numberChars <- sapply(numberChars, function(x) {if(x>0){return(x)} else{return(1)}})
   numberCommas <- sapply(df$BodyMarkClean, function(x) {return(nchar(gsub("[^,]","",x)))})
@@ -154,13 +171,14 @@ addFeatures <- function(df) {
   
   #maxim of relevance: number of stopwords
   library(tm)
+  print("  Compute numbers of stopwords")
   corpus <- Corpus(VectorSource(df$BodyMarkdown))
   corpus <- tm_map(corpus, removeWords, stopwords("english"))
   #corpus <- tm_map(corpus, stripWhitespace)
   df$nStopwords <- df$nCharBody - nchar(corpus)
   
   #reputation
-  df$LogReputation <- log(df$ReputationAtPostCreation)
+  #df$LogReputation <- log(df$ReputationAtPostCreation)
   return(df)
 }
 trainSample <- addFeatures(trainSample)
@@ -169,34 +187,68 @@ trainSample <- addFeatures(trainSample)
 #   Plot Data
 ##########################
 #plot maxim of quantity
-#library(plyr)
-#cdf <- ddply(trainSample,.(closed), summarise, logNCharBody.mean=mean(logNCharBody))
-#ggplot(trainSample, aes(x=logNCharBody, fill=closed)) + geom_density(alpha=.3) +
-#  xlab("log(characters in question)") +
-#  xlim(c(4,8)) +
-#  geom_vline(data=cdf, aes(xintercept=logNCharBody.mean, colour=closed), linetype="dashed", size=1) +
-#  adjustFontSize
-#savePlot('analyseDataset-nCharBody.png')
-#effect of boilerplate removal
-#ggplot(trainSample, aes(x=logNCharClean, fill=closed)) + geom_density(alpha=.3) + xlim(c(3.5,9))
-#ggplot(trainSample, aes(x=nCharBodyClean, nCharBody, colour=closed)) + geom_point()
+plotNCharBody <- function() {
+  library(plyr)
+  cdf <- ddply(trainSample,.(closed), summarise, logNCharBody.mean=mean(logNCharBody))
+  ggplot(trainSample, aes(x=logNCharBody, fill=closed)) + geom_density(alpha=.3) +
+    xlab("log(characters in question)") +
+    xlim(c(4,8)) +
+    geom_vline(data=cdf, aes(xintercept=logNCharBody.mean, colour=closed), linetype="dashed", size=1) +
+    adjustFontSize
+  savePlot('analyseDataset-nCharBody.png')
+  effect of boilerplate removal
+  ggplot(trainSample, aes(x=logNCharClean, fill=closed)) + geom_density(alpha=.3) + xlim(c(3.5,9))
+  ggplot(trainSample, aes(x=logNCharClean, fill=OpenStatus)) + geom_density(alpha=.3) + xlim(c(3.5,9))
+  [trainSample$OpenStatus!="open" & trainSample$OpenStatus!="off topic",]
+  ggplot(trainSample[trainSample$OpenStatus=="open" | trainSample$OpenStatus=="not a real question",], 
+         aes(x=logNCharClean, fill=OpenStatus)) + geom_density(alpha=.3) + xlim(c(3.5,9))
+  ggplot(trainSample, aes(x=logNCharBody, nCharBody, colour=closed)) + geom_point()
+}
 
-#plot commas
-#ggplot(trainSample, aes(x=logCommasPerChar, fill=closed)) + geom_density(alpha=.3)
+plotNTags <- function() {
+  plot(as.factor(trainSample$nTags))
+  plot(trainSample$closed ~ as.factor(trainSample$nTags))
+}
+
+plotNCharTitle <- function() {
+  plot(density(trainSample$nCharTitle))
+  ggplot(trainSample, aes(x=nCharTitle, fill=closed)) + geom_density(alpha=.3)
+  ggplot(trainSample, aes(x=nCharTitle, fill=OpenStatus)) + geom_density(alpha=.3)
+}
 
 #plot relevance
-#ggplot(trainSample, aes(x=nStopwords, fill=closed)) + geom_density(alpha=.3)
+plotNStopwords <- function() {
+  trainSample$fractionStopwords <- trainSample$nStopwords/trainSample$nCharBody
+  ggplot(trainSample[trainSample$OpenStatus=="open" | trainSample$OpenStatus=="too localized",], 
+         aes(x=fractionStopwords, fill=OpenStatus)) + geom_density(alpha=.3) + xlim(c(0,0.4))
+}
+#plot manner
+#plot commas
+plotCommas <- function() {
+  ggplot(trainSample, aes(x=logCommasPerChar, fill=OpenStatus)) + geom_density(alpha=.3)
+}
 
 #plot reputation
 #remove outliers
 #trainSamplePlot <- trainSample[trainSample$ReputationAtPostCreation < 5000, ]
-#ggplot(trainSamplePlot, aes(x=LogReputation, fill=closed)) + geom_density(alpha=.3) + adjustFontSize
-#savePlot("analyseDataset-ReputationDensity.png")
-
-#ggplot(trainSamplePlot[trainSamplePlot$OpenStatus!="open" & trainSamplePlot$OpenStatus!="off topic",], aes(x=LogReputation, fill=OpenStatus)) + 
-#  geom_density(alpha=.3) + adjustFontSize
-#savePlot("analyseDataset-ReputationMaximsDensity.png")
-
+plotReputation <- function() {
+  trainSample$LogReputation <- log(trainSample$ReputationAtPostCreation)
+  ggplot(trainSample, aes(x=LogReputation, fill=closed)) + geom_density(alpha=.3) + adjustFontSize 
+          
+  savePlot("analyseDataset-ReputationDensity.png")
+  
+  ggplot(trainSample[trainSample$OpenStatus!="open" & trainSample$OpenStatus!="off topic",], 
+            aes(x=LogReputation, fill=OpenStatus)) + 
+    geom_density(alpha=.3) + adjustFontSize
+  savePlot("analyseDataset-ReputationMaximsDensity.png")
+}
+plotUndeletedAnswers <- function() {
+  trainSample$logUndeletedAnsers <- log(trainSample$OwnerUndeletedAnswerCountAtPostTime)
+  plot(density(trainSample$logUndeletedAnsers))
+  ggplot(trainSample, 
+         aes(x=logUndeletedAnsers, fill=OpenStatus)) + 
+    geom_density(alpha=.3) + adjustFontSize
+}
 #######################
 #   Feature Scaling
 ######################
@@ -217,25 +269,38 @@ trainSample <- featureScaling(trainSample)
 #   Train Models
 ####################
 print("Train Models")
+priors <- computePriors(trainSample)
 #glm
 library(glmnet)
 trainSample.glm <- glmnet(as.matrix(trainSample[,c("ReputationAtPostCreation", "logNCharClean", 
                                                    "logNCharBody", "commasPerChar", "nStopwords",
                                                    "OwnerUndeletedAnswerCountAtPostTime",
-                                                   "nCharTitle", "nTags")]), trainSample$OpenStatus, family="multinomial")
+                                                   "nCharTitle"
+                                                   ,"nTags"
+                                                   )]), trainSample$OpenStatus, family="multinomial")
 #rpart
 library(rpart)
 trainSample.rpart <- rpart(OpenStatus~OwnerUndeletedAnswerCountAtPostTime+ReputationAtPostCreation+logNCharClean
-                           +commasPerChar+logNCharBody+nStopwords+nCharTitle+nTags,
-                           data=trainSample)
+                           +commasPerChar+logNCharBody+nStopwords+nCharTitle
+                           +nTags
+                           ,data=trainSample,
+                           parms=list(prior=computePriors(trainSample)))
 plot(trainSample.rpart)
 text(trainSample.rpart)
 
 #random forest
 library(randomForest)
 trainSample.randomForest <- randomForest(OpenStatus~OwnerUndeletedAnswerCountAtPostTime+ReputationAtPostCreation+
-                                        logNCharClean+logNCharBody+commasPerChar+nStopwords+nCharTitle+nTags, data=trainSample)
-
+                                        logNCharClean+logNCharBody+commasPerChar+nStopwords+nCharTitle
+                                         +nTags
+                                         ,data=trainSample,
+                                         classwt=computePriors(trainSample))
+#naive bayes
+library(e1071)
+trainSample.naiveBayes <- naiveBayes(OpenStatus~OwnerUndeletedAnswerCountAtPostTime+ReputationAtPostCreation+
+                                       logNCharClean+logNCharBody+commasPerChar+nStopwords+nCharTitle
+                                     +nTags
+                                     ,data=trainSample)
 ######################
 #   Evaluate Models
 ######################
@@ -256,49 +321,60 @@ appendToDataframe <- function(df, df.predicted) {
   return(df)
 }
 #test on non-trained data
-testSample <- bigTrainSample[sample(nrow(bigTrainSample), sampleSize),]
+testSample <- bigTrainSample[(floor(sampleSize/2)+1):sampleSize,]
 testSample <- preprocessLabeledData(testSample)
 testSample <- addFeatures(testSample)
 testSample <- featureScaling(testSample)
 testSample.predictedGLM <- predict(trainSample.glm, newx=as.matrix(testSample[c("ReputationAtPostCreation", "logNCharClean", 
                                                     "commasPerChar", "logNCharBody", "nStopwords",
-                                                    "OwnerUndeletedAnswerCountAtPostTime", "nCharTitle", "nTags")]), type="response", s=0.01)
+                                                    "OwnerUndeletedAnswerCountAtPostTime", "nCharTitle"
+                                                    , "nTags"
+                                                    )]), type="response", s=0.01)
 testSample <- appendToDataframe(testSample, testSample.predictedGLM)
 logLoss.glm <- multiclassLogLoss(testSample)
 print(paste("GLM on test data set: ", logLoss.glm))
 
 testSample.predictForest <- predict(trainSample.randomForest, newdata=testSample, type='prob')
 testSample <- appendToDataframe(testSample, testSample.predictForest)
-print("RandomForest on test data set")
 logLoss.randomForest <- multiclassLogLoss(testSample)
 print(paste("Random forest on test data set: ", logLoss.randomForest))
 
 testSample.predictRpart <- predict(trainSample.rpart, testSample)
 testSample <- appendToDataframe(testSample, testSample.predictRpart)
-print("Rpart on test data set")
 logLoss.rpart <- multiclassLogLoss(testSample)
 print(paste("Rpart on test data set: ", logLoss.rpart))
+
+testSample.predictNaiveBayes <- predict(trainSample.naiveBayes, newdata=testSample, type="raw")
+testSample <- appendToDataframe(testSample, testSample.predictNaiveBayes)
+logLoss.naiveBayes <- multiclassLogLoss(testSample)
+print(paste("Naive Bayes on test data set: ", logLoss.naiveBayes))
 
 ############################
 #apply to leaderboard data
 ###########################
-print("Apply model to leaderboard data")
-leaderboardSample <- read.csv("private_leaderboard.csv")
-leaderboardSample <- addFeatures(leaderboardSample)
-leaderboardSample <- featureScaling(leaderboardSample)
-pred.randomForest <- predict(trainSample.randomForest, newdata=leaderboardSample, type='prob')
-pred.rpart <- predict(trainSample.rpart, leaderboardSample)
-pred.glm <- predict(trainSample.glm, newx=as.matrix(leaderboardSample[c("ReputationAtPostCreation", "logNCharClean", 
-                                                                 "commasPerChar", "logNCharBody", "nStopwords",
-                                                                 "OwnerUndeletedAnswerCountAtPostTime", "nCharTitle"
-                                                                        , "nTags")]), type="response", s=0.01)
-#set na to 0
-pred[is.na(pred)] <- 0
-write.table(pred.glm, file="predictionGLM.csv", sep=",", row.names=FALSE,col.names=FALSE)
-write.table(pred.rpart, file="predictionRpart.csv", sep=",", row.names=FALSE,col.names=FALSE)
-write.table(pred.randomForest, file="predictionRandomForest.csv", sep=",", row.names=FALSE,col.names=FALSE)
+applyToLeaderboard <- function() {
+  print("Apply model to leaderboard data")
+  leaderboardSample <- read.csv("private_leaderboard.csv")
+  leaderboardSample <- addFeatures(leaderboardSample)
+  leaderboardSample <- featureScaling(leaderboardSample)
+  pred.randomForest <- predict(trainSample.randomForest, newdata=leaderboardSample, type='prob')
+  pred.rpart <- predict(trainSample.rpart, leaderboardSample)
+  pred.glm <- predict(trainSample.glm, newx=as.matrix(leaderboardSample[c("ReputationAtPostCreation", "logNCharClean", 
+                                                                          "commasPerChar", "logNCharBody", "nStopwords",
+                                                                          "OwnerUndeletedAnswerCountAtPostTime", "nCharTitle"
+                                                                          , "nTags"
+  )]), type="response", s=0.01)
+  #set na to 0
+  pred[is.na(pred)] <- 0
+  write.table(pred.glm, file="predictionGLM.csv", sep=",", row.names=FALSE,col.names=FALSE)
+  write.table(pred.rpart, file="predictionRpart.csv", sep=",", row.names=FALSE,col.names=FALSE)
+  write.table(pred.randomForest, file="predictionRandomForest.csv", sep=",", row.names=FALSE,col.names=FALSE)
+}
+#uniform benchmark: 1.6
+#my best score: 0.76, rank 43
+#prior benchmark: 0.47
+#basic benchmark: 0.46
 
-#score: 8.67054, rank 45
 
 
 
