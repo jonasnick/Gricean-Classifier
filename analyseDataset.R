@@ -196,18 +196,13 @@ plotNCharBody <- function() {
     geom_vline(data=cdf, aes(xintercept=logNCharBody.mean, colour=closed), linetype="dashed", size=1) +
     adjustFontSize
   savePlot('analyseDataset-nCharBody.png')
-  effect of boilerplate removal
+  #effect of boilerplate removal
   ggplot(trainSample, aes(x=logNCharClean, fill=closed)) + geom_density(alpha=.3) + xlim(c(3.5,9))
   ggplot(trainSample, aes(x=logNCharClean, fill=OpenStatus)) + geom_density(alpha=.3) + xlim(c(3.5,9))
-  [trainSample$OpenStatus!="open" & trainSample$OpenStatus!="off topic",]
+
   ggplot(trainSample[trainSample$OpenStatus=="open" | trainSample$OpenStatus=="not a real question",], 
          aes(x=logNCharClean, fill=OpenStatus)) + geom_density(alpha=.3) + xlim(c(3.5,9))
-  ggplot(trainSample, aes(x=logNCharBody, nCharBody, colour=closed)) + geom_point()
-}
-
-plotNTags <- function() {
-  plot(as.factor(trainSample$nTags))
-  plot(trainSample$closed ~ as.factor(trainSample$nTags))
+  savePlot('analyseDataset-nCharCleanOpenStatus.png')
 }
 
 plotNCharTitle <- function() {
@@ -221,7 +216,14 @@ plotNStopwords <- function() {
   trainSample$fractionStopwords <- trainSample$nStopwords/trainSample$nCharBody
   ggplot(trainSample[trainSample$OpenStatus=="open" | trainSample$OpenStatus=="too localized",], 
          aes(x=fractionStopwords, fill=OpenStatus)) + geom_density(alpha=.3) + xlim(c(0,0.4))
+  savePlot('analyseDataset-fracionStopwordsOpenStatus.png')
 }
+plotNTags <- function() {
+  plot(as.factor(trainSample$nTags))
+  plot(trainSample$closed ~ as.factor(trainSample$nTags))
+  savePlot('analyseDataset-nTags.png')
+}
+
 #plot manner
 #plot commas
 plotCommas <- function() {
@@ -242,11 +244,12 @@ plotReputation <- function() {
     geom_density(alpha=.3) + adjustFontSize
   savePlot("analyseDataset-ReputationMaximsDensity.png")
 }
+
 plotUndeletedAnswers <- function() {
-  trainSample$logUndeletedAnsers <- log(trainSample$OwnerUndeletedAnswerCountAtPostTime)
-  plot(density(trainSample$logUndeletedAnsers))
+  trainSample$logUndeletedAnswers <- log(trainSample$OwnerUndeletedAnswerCountAtPostTime)
+  plot(density(trainSample$logUndeletedAnswers))
   ggplot(trainSample, 
-         aes(x=logUndeletedAnsers, fill=OpenStatus)) + 
+         aes(x=logUndeletedAnswers, colour=OpenStatus)) + 
     geom_density(alpha=.3) + adjustFontSize
 }
 #######################
