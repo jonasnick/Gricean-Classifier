@@ -85,6 +85,7 @@ addBinaryResponse <- function(df) {
   df$Toolocalized <- sapply(df$OpenStatus, function(x) {if(x=="too localized"){return(1)}else{return(0)}})
   return(df)
 }
+
 ##########################
 #   Start
 ##########################
@@ -93,7 +94,7 @@ bigSample <- read.csv("smallTrainSample.csv")
 set.seed(3009)
 
 #reduce data
-sampleSize <- nrow(bigSample)
+sampleSize <- nrow(bigSample)/4
 trainSample <- bigSample[1:floor(sampleSize/2),]
 
 #######################
@@ -201,7 +202,8 @@ plotNCharBody <- function() {
   ggplot(trainSample, aes(x=logNCharClean, fill=OpenStatus)) + geom_density(alpha=.3) + xlim(c(3.5,9))
 
   ggplot(trainSample[trainSample$OpenStatus=="open" | trainSample$OpenStatus=="not a real question",], 
-         aes(x=logNCharClean, fill=OpenStatus)) + geom_density(alpha=.3) + xlim(c(3.5,9))
+         aes(x=logNCharClean, fill=OpenStatus)) + geom_density(alpha=.3) + xlim(c(3.5,9)) + 
+           adjustFontSize
   savePlot('analyseDataset-nCharCleanOpenStatus.png')
 }
 
@@ -215,10 +217,12 @@ plotNCharTitle <- function() {
 plotNStopwords <- function() {
   trainSample$fractionStopwords <- trainSample$nStopwords/trainSample$nCharBody
   ggplot(trainSample[trainSample$OpenStatus=="open" | trainSample$OpenStatus=="too localized",], 
-         aes(x=fractionStopwords, fill=OpenStatus)) + geom_density(alpha=.3) + xlim(c(0,0.4))
-  savePlot('analyseDataset-fracionStopwordsOpenStatus.png')
+         aes(x=fractionStopwords, fill=OpenStatus)) + geom_density(alpha=.3) + xlim(c(0,0.4))+ 
+           adjustFontSize
+  savePlot('analyseDataset-fractionStopwords.png')
 }
 plotNTags <- function() {
+  par(cex.axis=1.3, cex.lab=1.3)
   plot(as.factor(trainSample$nTags))
   plot(trainSample$closed ~ as.factor(trainSample$nTags))
   savePlot('analyseDataset-nTags.png')
@@ -289,7 +293,9 @@ trainSample.rpart <- rpart(OpenStatus~OwnerUndeletedAnswerCountAtPostTime+Reputa
                            ,data=trainSample,
                            parms=list(prior=computePriors(trainSample)))
 plot(trainSample.rpart)
+par(cex=1.4)
 text(trainSample.rpart)
+savePlot("analyseDataset-plotRpart.png")
 
 #random forest
 library(randomForest)
@@ -324,7 +330,7 @@ appendToDataframe <- function(df, df.predicted) {
   return(df)
 }
 #test on non-trained data
-testSample <- bigTrainSample[(floor(sampleSize/2)+1):sampleSize,]
+testSample <- bigSample[(floor(sampleSize/2)+1):sampleSize,]
 testSample <- preprocessLabeledData(testSample)
 testSample <- addFeatures(testSample)
 testSample <- featureScaling(testSample)
