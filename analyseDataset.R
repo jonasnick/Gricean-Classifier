@@ -222,7 +222,7 @@ plotNStopwords <- function() {
   savePlot('analyseDataset-fractionStopwords.png')
 }
 plotNTags <- function() {
-  par(cex.axis=1.3, cex.lab=1.3)
+  par(cex.axis=1.2, cex.lab=1.2)
   plot(as.factor(trainSample$nTags))
   plot(trainSample$closed ~ as.factor(trainSample$nTags))
   savePlot('analyseDataset-nTags.png')
@@ -243,7 +243,7 @@ plotReputation <- function() {
           
   savePlot("analyseDataset-ReputationDensity.png")
   
-  ggplot(trainSample[trainSample$OpenStatus!="open" & trainSample$OpenStatus!="off topic",], 
+  ggplot(trainSample[trainSample$OpenStatus!="open" & trainSample$OpenStatus!="off topic" & trainSample$OpenStatus!="too localized",], 
             aes(x=LogReputation, fill=OpenStatus)) + 
     geom_density(alpha=.3) + adjustFontSize
   savePlot("analyseDataset-ReputationMaximsDensity.png")
@@ -310,6 +310,16 @@ trainSample.naiveBayes <- naiveBayes(OpenStatus~OwnerUndeletedAnswerCountAtPostT
                                        logNCharClean+logNCharBody+commasPerChar+nStopwords+nCharTitle
                                      +nTags
                                      ,data=trainSample)
+
+library(tree)
+#r tree
+trainSample.tree <- tree(OpenStatus~OwnerUndeletedAnswerCountAtPostTime+ReputationAtPostCreation +
+                                      + logNCharClean+logNCharBody+commasPerChar+nStopwords+nCharTitle
+                                     +nTags
+                                     ,data=trainSample)
+text(trainSample.tree)
+plot(trainSample.tree)
+
 ######################
 #   Evaluate Models
 ######################
@@ -357,6 +367,11 @@ testSample.predictNaiveBayes <- predict(trainSample.naiveBayes, newdata=testSamp
 testSample <- appendToDataframe(testSample, testSample.predictNaiveBayes)
 logLoss.naiveBayes <- multiclassLogLoss(testSample)
 print(paste("Naive Bayes on test data set: ", logLoss.naiveBayes))
+
+testSample.predictTree <- predict(trainSample.tree, newdata=testSample)
+testSample <- appendToDataframe(testSample, testSample.predictTree)
+logLoss.tree <- multiclassLogLoss(testSample)
+print(paste("Tree on test data set: ", logLoss.tree))
 
 ############################
 #apply to leaderboard data
