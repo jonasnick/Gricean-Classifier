@@ -90,7 +90,7 @@ addBinaryResponse <- function(df) {
 #   Start
 ##########################
 #first half is training data second half is test data
-bigSample <- read.csv("smallTrainSample.csv")
+bigSample <- read.csv("../data/smallTrainSample.csv")
 set.seed(3009)
 
 #reduce data
@@ -378,7 +378,7 @@ print(paste("Tree on test data set: ", logLoss.tree))
 ###########################
 applyToLeaderboard <- function() {
   print("Apply model to leaderboard data")
-  leaderboardSample <- read.csv("private_leaderboard.csv")
+  leaderboardSample <- read.csv("../data/private_leaderboard.csv")
   leaderboardSample <- addFeatures(leaderboardSample)
   leaderboardSample <- featureScaling(leaderboardSample)
   pred.randomForest <- predict(trainSample.randomForest, newdata=leaderboardSample, type='prob')
