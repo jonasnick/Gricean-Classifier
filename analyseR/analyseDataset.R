@@ -236,17 +236,56 @@ plotCommas <- function() {
 
 #plot reputation
 #remove outliers
-#trainSamplePlot <- trainSample[trainSample$ReputationAtPostCreation < 5000, ]
 plotReputation <- function() {
+  trainSample <- trainSample[trainSample$ReputationAtPostCreation < 5000, ]
+  ggplot(trainSample, aes(x=ReputationAtPostCreation)) + geom_density(alpha=.3) + 
+              adjustFontSize +
+              xlim(c(0,750))
+  #we see that overall there are many users with low reputation
+  #reputation gets less and less, beginnig with a step downwards trend and then a body has a large tail
+  ggplot(trainSample, aes(x=ReputationAtPostCreation,fill=closed)) + geom_density(alpha=.3) + 
+    adjustFontSize +
+    xlim(c(0,1000))
+  #closed questions are posed mainly by users with a low reputation (reputation=1), we see the same for 
+  #questions which remain open, but the curve has a larger body
+  #closed questions 
+  #it also shows that users with a reputation until the intersection should be classified as closed, whereas afterwards
+  #it should be left open
+  ggplot(trainSample, aes(x=ReputationAtPostCreation,fill=closed)) + geom_density(alpha=.3) + 
+    adjustFontSize +
+    xlim(c(0,500))
+  boxplot(trainSample$ReputationAtPostCreation ~ trainSample$closed  )
+  
   trainSample$LogReputation <- log(trainSample$ReputationAtPostCreation)
+  ggplot(trainSample, aes(x=LogReputation)) + geom_density(alpha=.3) + adjustFontSize
   ggplot(trainSample, aes(x=LogReputation, fill=closed)) + geom_density(alpha=.3) + adjustFontSize 
-          
   savePlot("analyseDataset-ReputationDensity.png")
+  
+  closedNumeric <- as.numeric(trainSample$closed) -rep(1,nrow(trainSample))
+  
+  #plot glm
+  par(cex=1.3)
+  plot(trainSample$ReputationAtPostCreation, closedNumeric, xlab="Reputation", ylab="Probability for closed question") 
+  reputation.glm=glm(closed~ReputationAtPostCreation,family=binomial,trainSample) 
+  summary(reputation.glm)
+  curve(predict(reputation.glm,data.frame(ReputationAtPostCreation=x),type="resp"),add=TRUE)
+  #DecisionBoundary
+  coef(reputation.glm)
+  decisionBoundary = - coef(reputation.glm)[1]/coef(reputation.glm)[2]
+  abline(v=decisionBoundary)
+  
+  #plot log glm (no interesting effect)
+  logReputation.glm=glm(closed~LogReputation,family=binomial,trainSample)
+  summary(logReputation.glm)
+  plot(trainSample$LogReputation,closedNumeric, xlab="logReputation", ylab="Probability for closed question")
+  curve(predict(logReputation.glm,data.frame(LogReputation=x),type="resp"),add=TRUE)
+  
   
   ggplot(trainSample[trainSample$OpenStatus!="open" & trainSample$OpenStatus!="off topic" & trainSample$OpenStatus!="too localized",], 
             aes(x=LogReputation, fill=OpenStatus)) + 
     geom_density(alpha=.3) + adjustFontSize
   savePlot("analyseDataset-ReputationMaximsDensity.png")
+  #t-tests
 }
 
 plotUndeletedAnswers <- function() {
@@ -379,7 +418,7 @@ print(paste("Tree on test data set: ", logLoss.tree))
 applyToLeaderboard <- function() {
   print("Apply model to leaderboard data")
   leaderboardSample <- read.csv("../data/private_leaderboard.csv")
-  leaderboardSample <- addFeatures(leaderboardSample)
+  leaderboardSample <- addFeatuj:res(leaderboardSample)
   leaderboardSample <- featureScaling(leaderboardSample)
   pred.randomForest <- predict(trainSample.randomForest, newdata=leaderboardSample, type='prob')
   pred.rpart <- predict(trainSample.rpart, leaderboardSample)
