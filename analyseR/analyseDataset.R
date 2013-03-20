@@ -1,4 +1,8 @@
+#Predict closed questions on Stack Overflow
+
+#Libraries
 library(ggplot2)
+
 #helper functions
 computePriors <- function(df) {
   n = nrow(df)
@@ -90,7 +94,7 @@ addBinaryResponse <- function(df) {
 #   Start
 ##########################
 #first half is training data second half is test data
-bigSample <- read.csv("../data/smallTrainSample.csv")
+bigSample <- read.csv("../data/train_sample.csv")
 set.seed(3009)
 
 #reduce data
@@ -143,8 +147,8 @@ addFeatures <- function(df) {
                 sapply(df$Tag5, isEmpty)
     return(df)
   }
-  print("  Count number of tags")
-  df <- countNumberTags(df)
+  print("  Count number of tags (disabled)")
+  #df <- countNumberTags(df)
   
   #maxim of quantity: question length
   print("  Compute question length")
@@ -172,11 +176,14 @@ addFeatures <- function(df) {
   
   #maxim of relevance: number of stopwords
   library(tm)
-  print("  Compute numbers of stopwords")
+  print("  Compute number of stopwords")
   corpus <- Corpus(VectorSource(df$BodyMarkdown))
   corpus <- tm_map(corpus, removeWords, stopwords("english"))
   #corpus <- tm_map(corpus, stripWhitespace)
   df$nStopwords <- df$nCharBody - nchar(corpus)
+  
+  #maxim of quality user age
+  df$UserAge <- as.numeric(as.Date(df$PostCreationDate,format="%m/%d/%Y") - as.Date(df$OwnerCreationDate,format="%m/%d/%Y"))
   
   #reputation
   #df$LogReputation <- log(df$ReputationAtPostCreation)
@@ -203,8 +210,10 @@ plotNCharBody <- function() {
 
   ggplot(trainSample[trainSample$OpenStatus=="open" | trainSample$OpenStatus=="not a real question",], 
          aes(x=logNCharClean, fill=OpenStatus)) + geom_density(alpha=.3) + xlim(c(3.5,9)) + 
-           adjustFontSize
-  savePlot('analyseDataset-nCharCleanOpenStatus.png')
+           adjustFontSize  
+  t.test(trainSample[trainSample$OpenStatus=="open",]$logNCharClean, trainSample[trainSample$OpenStatus=="not a real question",]$logNCharClean)
+
+  jsavePlot('analyseDataset-nCharCleanOpenStatus.png')
 }
 
 plotNCharTitle <- function() {
@@ -219,6 +228,7 @@ plotNStopwords <- function() {
   ggplot(trainSample[trainSample$OpenStatus=="open" | trainSample$OpenStatus=="too localized",], 
          aes(x=fractionStopwords, fill=OpenStatus)) + geom_density(alpha=.3) + xlim(c(0,0.4))+ 
            adjustFontSize
+  t.test(trainSample[trainSample$OpenStatus=="open",]$fractionStopwords, trainSample[trainSample$OpenStatus=="too localized",]$fractionStopwords)
   savePlot('analyseDataset-fractionStopwords.png')
 }
 plotNTags <- function() {
@@ -235,57 +245,112 @@ plotCommas <- function() {
 }
 
 #plot reputation
-#remove outliers
 plotReputation <- function() {
+  #remove outliers
   trainSample <- trainSample[trainSample$ReputationAtPostCreation < 5000, ]
-  ggplot(trainSample, aes(x=ReputationAtPostCreation)) + geom_density(alpha=.3) + 
+  ggplot(trainSample, aes(x=ReputationAtPostCreation)) + geom_density(alpha=.3, fill="salmon")  +
+    adjustFontSize +
+    geom_vline(aes(xintercept=mean(trainSample$ReputationAtPostCreation, na.rm=T)),   # Ignore NA values for mean
+               color="salmon", linetype="dashed", size=1) +
+    coord_cartesian(xlim = c(0,1000))  
+  savePlot("analyseDataset-reputationDensityPlain.png")
+  #load data where closed:open ratio is not 1:1 but like normal
+  veryBigSample <- read.csv("../data/bigTrain/sample.csv")
+  veryBigSample$ReputationAtPostCreation <- veryBigSample$X1
+  #remove outliers
+  veryBigSampleDist <- veryBigSample[veryBigSample$ReputationAtPostCreation > 1, ]
+  ggplot(veryBigSampleDist, aes(x=ReputationAtPostCreation)) + geom_density(alpha=.3, fill="salmon")  +
               adjustFontSize +
-              xlim(c(0,750))
-  #we see that overall there are many users with low reputation
-  #reputation gets less and less, beginnig with a step downwards trend and then a body has a large tail
+              scale_x_log10()
+  savePlot("analyseDataset-reputationDensityLog.png")
+  library(plyr)
+  cdf <- ddply(trainSample,.(closed), summarise, ReputationAtPostCreation.mean=mean(ReputationAtPostCreation))
   ggplot(trainSample, aes(x=ReputationAtPostCreation,fill=closed)) + geom_density(alpha=.3) + 
     adjustFontSize +
-    xlim(c(0,1000))
-  #closed questions are posed mainly by users with a low reputation (reputation=1), we see the same for 
-  #questions which remain open, but the curve has a larger body
-  #closed questions 
-  #it also shows that users with a reputation until the intersection should be classified as closed, whereas afterwards
-  #it should be left open
-  ggplot(trainSample, aes(x=ReputationAtPostCreation,fill=closed)) + geom_density(alpha=.3) + 
-    adjustFontSize +
-    xlim(c(0,500))
-  boxplot(trainSample$ReputationAtPostCreation ~ trainSample$closed  )
+    coord_cartesian(xlim = c(0,500)) +
+    geom_vline(data=cdf, aes(xintercept=ReputationAtPostCreation.mean,  colour=closed),
+               linetype="dashed", size=1) 
+  savePlot("analyseDataset-reputationDensity.png")
+  #ggplot(trainSample, aes(x=ReputationAtPostCreation,fill=closed)) + geom_density(alpha=.3) + 
+  #  adjustFontSize +
+  #  xlim(c(0,500))
+  ggplot(data=trainSample, aes(y=ReputationAtPostCreation,x=closed)) +
+    geom_boxplot() +
+    coord_cartesian(ylim = c(0,1000)) +
+    adjustFontSize
+  savePlot("analyseDataset-reputationBoxplot.png")
   
-  trainSample$LogReputation <- log(trainSample$ReputationAtPostCreation)
-  ggplot(trainSample, aes(x=LogReputation)) + geom_density(alpha=.3) + adjustFontSize
-  ggplot(trainSample, aes(x=LogReputation, fill=closed)) + geom_density(alpha=.3) + adjustFontSize 
-  savePlot("analyseDataset-ReputationDensity.png")
-  
-  closedNumeric <- as.numeric(trainSample$closed) -rep(1,nrow(trainSample))
+  ggplot(data=trainSample, aes(y=ReputationAtPostCreation,x=OpenStatus)) +
+    geom_boxplot() +
+    coord_cartesian(ylim = c(0,1000)) +
+    adjustFontSize
+    
+  #trainSample$LogReputation <- log(trainSample$ReputationAtPostCreation)
+  #ggplot(trainSample, aes(x=LogReputation)) + geom_density(alpha=.3) + adjustFontSize
+  #ggplot(trainSample, aes(x=LogReputation, fill=closed)) + geom_density(alpha=.3) + adjustFontSize 
   
   #plot glm
+  closedNumeric <- as.numeric(trainSample$closed) -rep(1,nrow(trainSample))
   par(cex=1.3)
-  plot(trainSample$ReputationAtPostCreation, closedNumeric, xlab="Reputation", ylab="Probability for closed question") 
-  reputation.glm=glm(closed~ReputationAtPostCreation,family=binomial,trainSample) 
+  
+  reputation.glm=glm(closed~I(log(ReputationAtPostCreation)),family=binomial,trainSample) 
   summary(reputation.glm)
-  curve(predict(reputation.glm,data.frame(ReputationAtPostCreation=x),type="resp"),add=TRUE)
+    probClosed = predict(reputation.glm,type="response")
   #DecisionBoundary
   coef(reputation.glm)
   decisionBoundary = - coef(reputation.glm)[1]/coef(reputation.glm)[2]
-  abline(v=decisionBoundary)
+  qplot(ReputationAtPostCreation, probClosed, data=cbind(trainSample, probClosed), size=I(3)) + geom_smooth(color="blue",size=I(0.5)) +
+    geom_vline(xintercept=decisionBoundary, colour="salmon", size=1, linetype="dashed") + 
+    ylab("Probability closed") +
+    adjustFontSize 
+  savePlot("analyseDataset-reputationRegression.png")
+  newData <- bigSample[(floor(sampleSize/2)+1):sampleSize,]
+  newData <- preprocessLabeledData(newData)
+  newData <- addFeatures(newData)
+  testModelClosed <- function(model) {
+    label = newData$closed
+    prediction = sapply((predict(model, type="response", newdata=newData)),threshold)
+    difference = as.numeric(label) -rep(1,nrow(newData)) - prediction
+    correctFraction = (1-sum(abs(difference))/length(difference))
+    return(paste(c("Testdaten: ",as.character(correctFraction*100),"% korrekte Vorhersagen"),collapse = ""))
+  } 
+  testModelClosed(reputation.glm)
+  reputationLanguage.glm=glm(closed~ReputationAtPostCreation+logNCharBody+nCharTitle, family=binomial,trainSample)
+  testModelClosed(reputationLanguage.glm)
+  drop1(reputationLanguage.glm)
   
-  #plot log glm (no interesting effect)
-  logReputation.glm=glm(closed~LogReputation,family=binomial,trainSample)
-  summary(logReputation.glm)
-  plot(trainSample$LogReputation,closedNumeric, xlab="logReputation", ylab="Probability for closed question")
-  curve(predict(logReputation.glm,data.frame(LogReputation=x),type="resp"),add=TRUE)
+  reputationUserAge.glm=glm(closed~I(log(ReputationAtPostCreation))+UserAge, family=binomial,trainSample)
+  summary(reputationUserAge.glm)
+  testModelClosed(reputationUserAge.glm)
+  drop1(reputationLanguage.glm)
+      
   
+  reputationLanguageAge.glm=glm(closed~I(log(ReputationAtPostCreation))+logNCharBody+nCharTitle+nStopwords+commasPerChar, family=binomial,trainSample)
+  summary(reputationLanguageAge.glm)
+  testModelClosed(reputationLanguageAge.glm)
+  drop1(reputationLanguageAge.glm)
   
-  ggplot(trainSample[trainSample$OpenStatus!="open" & trainSample$OpenStatus!="off topic" & trainSample$OpenStatus!="too localized",], 
-            aes(x=LogReputation, fill=OpenStatus)) + 
-    geom_density(alpha=.3) + adjustFontSize
+
+  plot(trainSample$ReputationAtPostCreation, trainSample$UserAge)
+  x <- cor(trainSample$ReputationAtPostCreation, trainSample$UserAge)
+  cor(trainSample$ReputationAtPostCreation, trainSample$logNCharBody)
+  abline(a=0, b=x)
+  
+  cdf <- ddply(trainSample[trainSample$OpenStatus!="too localized" & trainSample$OpenStatus!="off topic" ,],.(OpenStatus), summarise, ReputationAtPostCreation.mean=mean(ReputationAtPostCreation))
+  ggplot(trainSample[trainSample$OpenStatus!="too localized" & trainSample$OpenStatus!="off topic" ,], 
+            aes(x=ReputationAtPostCreation, fill=OpenStatus)) + 
+    geom_density(alpha=.3) + adjustFontSize +
+    coord_cartesian(xlim = c(0,600)) +
+    geom_vline(data=cdf, aes(xintercept=ReputationAtPostCreation.mean,  colour=OpenStatus),
+               linetype="dashed", size=1)
   savePlot("analyseDataset-ReputationMaximsDensity.png")
-  #t-tests
+  
+  reputationAll.glm <- glm(closed~OwnerUndeletedAnswerCountAtPostTime+ReputationAtPostCreation+logNCharClean
+                         +commasPerChar+logNCharBody+nStopwords+nCharTitle
+                         ,data=trainSample, family="binomial")
+  summary(reputationAll.glm)
+  drop1(reputationAll.glm,test="Chisq")
+  testModel(reputationAll.glm, testSample, testSample$closed)
 }
 
 plotUndeletedAnswers <- function() {
@@ -306,7 +371,6 @@ featureScaling <- function(df) {
   df$OwnerUndeletedAnswerCountAtPostTime <- scale(df$OwnerUndeletedAnswerCountAtPostTime)
   df$logNCharBody <- scale(df$logNCharBody)
   df$nStopwords <- scale(df$nStopwords)
-  df$nTags <- scale(df$nTags)
   df$nCharTitle <- scale(df$nCharTitle)
   return(df)
 }
@@ -317,47 +381,52 @@ trainSample <- featureScaling(trainSample)
 print("Train Models")
 priors <- computePriors(trainSample)
 #glm
+print("1")
 library(glmnet)
 trainSample.glm <- glmnet(as.matrix(trainSample[,c("ReputationAtPostCreation", "logNCharClean", 
                                                    "logNCharBody", "commasPerChar", "nStopwords",
                                                    "OwnerUndeletedAnswerCountAtPostTime",
                                                    "nCharTitle"
-                                                   ,"nTags"
                                                    )]), trainSample$OpenStatus, family="multinomial")
 #rpart
 library(rpart)
+print("1")
 trainSample.rpart <- rpart(OpenStatus~OwnerUndeletedAnswerCountAtPostTime+ReputationAtPostCreation+logNCharClean
                            +commasPerChar+logNCharBody+nStopwords+nCharTitle
-                           +nTags
                            ,data=trainSample,
                            parms=list(prior=computePriors(trainSample)))
-plot(trainSample.rpart)
-par(cex=1.4)
-text(trainSample.rpart)
-savePlot("analyseDataset-plotRpart.png")
+#plot(trainSample.rpart)
+#par(cex=1.2)
+#text(trainSample.rpart)
+#savePlot("analyseDataset-plotRpart.png")
+#summary(trainSample.rpart)
 
 #random forest
 library(randomForest)
+print("1")
 trainSample.randomForest <- randomForest(OpenStatus~OwnerUndeletedAnswerCountAtPostTime+ReputationAtPostCreation+
                                         logNCharClean+logNCharBody+commasPerChar+nStopwords+nCharTitle
-                                         +nTags
                                          ,data=trainSample,
                                          classwt=computePriors(trainSample))
+#trainSample.randomForest$importance
+#importance(trainSample.randomForest)
 #naive bayes
 library(e1071)
+print("1")
 trainSample.naiveBayes <- naiveBayes(OpenStatus~OwnerUndeletedAnswerCountAtPostTime+ReputationAtPostCreation+
                                        logNCharClean+logNCharBody+commasPerChar+nStopwords+nCharTitle
-                                     +nTags
                                      ,data=trainSample)
 
+#summary(trainSample.naiveBayes)
+print("1")
 library(tree)
 #r tree
 trainSample.tree <- tree(OpenStatus~OwnerUndeletedAnswerCountAtPostTime+ReputationAtPostCreation +
                                       + logNCharClean+logNCharBody+commasPerChar+nStopwords+nCharTitle
-                                     +nTags
                                      ,data=trainSample)
-text(trainSample.tree)
-plot(trainSample.tree)
+#text(trainSample.tree)
+#plot(trainSample.tree)
+#summary(trainSample.tree)
 
 ######################
 #   Evaluate Models
@@ -386,7 +455,6 @@ testSample <- featureScaling(testSample)
 testSample.predictedGLM <- predict(trainSample.glm, newx=as.matrix(testSample[c("ReputationAtPostCreation", "logNCharClean", 
                                                     "commasPerChar", "logNCharBody", "nStopwords",
                                                     "OwnerUndeletedAnswerCountAtPostTime", "nCharTitle"
-                                                    , "nTags"
                                                     )]), type="response", s=0.01)
 testSample <- appendToDataframe(testSample, testSample.predictedGLM)
 logLoss.glm <- multiclassLogLoss(testSample)
@@ -418,14 +486,13 @@ print(paste("Tree on test data set: ", logLoss.tree))
 applyToLeaderboard <- function() {
   print("Apply model to leaderboard data")
   leaderboardSample <- read.csv("../data/private_leaderboard.csv")
-  leaderboardSample <- addFeatuj:res(leaderboardSample)
+  leaderboardSample <- addFeatures(leaderboardSample)
   leaderboardSample <- featureScaling(leaderboardSample)
   pred.randomForest <- predict(trainSample.randomForest, newdata=leaderboardSample, type='prob')
   pred.rpart <- predict(trainSample.rpart, leaderboardSample)
   pred.glm <- predict(trainSample.glm, newx=as.matrix(leaderboardSample[c("ReputationAtPostCreation", "logNCharClean", 
                                                                           "commasPerChar", "logNCharBody", "nStopwords",
                                                                           "OwnerUndeletedAnswerCountAtPostTime", "nCharTitle"
-                                                                          , "nTags"
   )]), type="response", s=0.01)
   #set na to 0
   pred[is.na(pred)] <- 0
