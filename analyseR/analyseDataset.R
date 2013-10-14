@@ -255,10 +255,11 @@ plotReputation <- function() {
     coord_cartesian(xlim = c(0,1000))  
   savePlot("analyseDataset-reputationDensityPlain.png")
   #load data where closed:open ratio is not 1:1 but like normal
-  veryBigSample <- read.csv("../data/bigTrain/sample.csv")
-  veryBigSample$ReputationAtPostCreation <- veryBigSample$X1
+  #veryBigSample <- read.csv("../data/bigTrain/sample.csv")
+  #veryBigSample$ReputationAtPostCreation <- veryBigSample$X1
   #remove outliers
-  veryBigSampleDist <- veryBigSample[veryBigSample$ReputationAtPostCreation > 1, ]
+  #veryBigSampleDist <- veryBigSample[veryBigSample$ReputationAtPostCreation > 1, ]
+  veryBigSampleDist <- trainSample
   ggplot(veryBigSampleDist, aes(x=ReputationAtPostCreation)) + geom_density(alpha=.3, fill="salmon")  +
               adjustFontSize +
               scale_x_log10()
@@ -340,7 +341,8 @@ plotReputation <- function() {
   ggplot(trainSample[trainSample$OpenStatus!="too localized" & trainSample$OpenStatus!="off topic" ,], 
             aes(x=ReputationAtPostCreation, fill=OpenStatus)) + 
     geom_density(alpha=.3) + adjustFontSize +
-    coord_cartesian(xlim = c(0,600)) +
+#    coord_cartesian(xlim = c(0,600)) +
+              scale_x_log10()+
     geom_vline(data=cdf, aes(xintercept=ReputationAtPostCreation.mean,  colour=OpenStatus),
                linetype="dashed", size=1)
   savePlot("analyseDataset-ReputationMaximsDensity.png")
