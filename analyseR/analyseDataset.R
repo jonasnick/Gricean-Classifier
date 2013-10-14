@@ -259,11 +259,16 @@ plotReputation <- function() {
   #veryBigSample$ReputationAtPostCreation <- veryBigSample$X1
   #remove outliers
   #veryBigSampleDist <- veryBigSample[veryBigSample$ReputationAtPostCreation > 1, ]
-  veryBigSampleDist <- trainSample
+  #only consider reputation bigger than one
+  veryBigSampleDist <- trainSample[trainSample$ReputationAtPostCreation > 1, ]
   ggplot(veryBigSampleDist, aes(x=ReputationAtPostCreation)) + geom_density(alpha=.3, fill="salmon")  +
               adjustFontSize +
               scale_x_log10()
   savePlot("analyseDataset-reputationDensityLog.png")
+  ggplot(trainSample, aes(x=ReputationAtPostCreation)) + geom_density(alpha=.3, fill="salmon")  +
+              adjustFontSize +
+              scale_x_log10()
+  savePlot("analyseDataset-reputationDensityLogWOne.png")
   library(plyr)
   cdf <- ddply(trainSample,.(closed), summarise, ReputationAtPostCreation.mean=mean(ReputationAtPostCreation))
   ggplot(trainSample, aes(x=ReputationAtPostCreation,fill=closed)) + geom_density(alpha=.3) + 
@@ -341,11 +346,19 @@ plotReputation <- function() {
   ggplot(trainSample[trainSample$OpenStatus!="too localized" & trainSample$OpenStatus!="off topic" ,], 
             aes(x=ReputationAtPostCreation, fill=OpenStatus)) + 
     geom_density(alpha=.3) + adjustFontSize +
-#    coord_cartesian(xlim = c(0,600)) +
-              scale_x_log10()+
+    coord_cartesian(xlim = c(0,600)) +
     geom_vline(data=cdf, aes(xintercept=ReputationAtPostCreation.mean,  colour=OpenStatus),
                linetype="dashed", size=1)
   savePlot("analyseDataset-ReputationMaximsDensity.png")
+  
+    cdf <- ddply(trainSample[trainSample$OpenStatus!="too localized" & trainSample$OpenStatus!="off topic" ,],.(OpenStatus), summarise, ReputationAtPostCreation.mean=mean(ReputationAtPostCreation))
+  ggplot(trainSample[trainSample$OpenStatus!="too localized" & trainSample$OpenStatus!="off topic" ,], 
+            aes(x=ReputationAtPostCreation, fill=OpenStatus)) + 
+    geom_density(alpha=.3) + adjustFontSize +
+              scale_x_log10() +
+    geom_vline(data=cdf, aes(xintercept=ReputationAtPostCreation.mean,  colour=OpenStatus),
+               linetype="dashed", size=1)
+  savePlot("analyseDataset-ReputationMaximsDensityLog.png")
   
   reputationAll.glm <- glm(closed~OwnerUndeletedAnswerCountAtPostTime+ReputationAtPostCreation+logNCharClean
                          +commasPerChar+logNCharBody+nStopwords+nCharTitle
